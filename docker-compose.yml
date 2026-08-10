@@ -1,12 +1,7 @@
-version: '3.2'
-
 services:
-  monitoring:
-    container_name: system-sensors
+  system-sensors:
     build: .
-    restart: always
-    devices:
-      - /dev/vchiq
+    container_name: system-sensors
     volumes:
       - ./config:/app/config
       - /etc/os-release:/app/host/os-release:ro
@@ -14,5 +9,14 @@ services:
       - /opt/vc:/opt/vc:ro
       - /proc/device-tree/model:/app/host/proc/device-tree/model:ro
       - /tmp/system_sensor_pipe:/app/host/system_sensor_pipe:ro
+      - /var/lib/dpkg:/var/lib/dpkg:ro
+      - /var/lib/apt/lists:/var/lib/apt/lists:ro
+      - /etc/apt:/etc/apt:ro
     environment:
       - LD_LIBRARY_PATH=/opt/vc/lib
+    labels:
+      - wud.trigger.exclude=docker.update
+    devices:
+      - /dev/vchiq
+    network_mode: host
+    restart: unless-stopped

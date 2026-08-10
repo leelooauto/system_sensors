@@ -10,11 +10,11 @@ tls:
 deviceName: test
 client_id: test
 ha_status: hass     # status topic for homeassistant: defaults to hass if key is omitted
-timezone: Europe/Brussels
+timezone: Australia/Brisbane
 update_interval: 60 # Defaults to 60
 sensors:
   temperature: true
-  display: true
+  display: false
   clock_speed: true
   fan_speed: false
   disk_use: true
@@ -23,7 +23,7 @@ sensors:
   load_1m: true
   load_5m: true
   load_15m: true
-  net_tx: "enp1s0" # true for all interfaces, otherwise the name of the interface
+  net_tx: true # true for all interfaces, otherwise the name of the interface
   net_rx: true # true for all interfaces, otherwise the name of the interface
   swap_usage: true
   power_status: true
@@ -34,10 +34,24 @@ sensors:
   host_arch: true
   last_message: true
   updates: true
-  wifi_strength: true
-  wifi_ssid: true
+  wifi_strength: false
+  wifi_ssid: false
   external_drives:
     # Only add mounted drives here, e.g.:
     # Drive1: /media/storage
     # For ZFS Pools use the format:
     # pool-name: /mount-point
+
+##### ADDED Sensors ####
+  disk_available: false
+  disk_used: false
+  disk_free: false
+  memory_available: false
+  memory_used: false
+  memory_free: false
+  bytes_sent: false
+  bytes_recv: false
+  packets_sent: false
+  packets_recv: false
+  host_kernel: true
+  host_platform: true

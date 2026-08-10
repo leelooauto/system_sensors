@@ -34,9 +34,9 @@ except ImportError:
     pass
 
 try:
-    import apt
+    subprocess.check_output(["apt", "--version"], stderr=subprocess.DEVNULL)
     apt_disabled = False
-except ImportError:
+except (subprocess.CalledProcessError, FileNotFoundError):
     apt_disabled = True
 
 isDockerized = bool(os.getenv('YES_YOU_ARE_IN_A_CONTAINER', False))
@@ -98,10 +98,21 @@ def get_last_message():
     return str(as_local(utc_from_timestamp(time.time())).isoformat())
 
 def get_updates():
-    cache = apt.Cache()
-    cache.open(None)
-    cache.upgrade()
-    return str(cache.get_changes().__len__())
+    result = subprocess.check_output(
+        [
+            "bash",
+            "-c",
+            "apt list --upgradeable 2>/dev/null | grep -v '^Listing' | grep -v '^WARNING' | wc -l",
+        ]
+    )
+
+    return result.decode("utf-8").strip()
+    
+# def get_updates():
+#    cache = apt.Cache()
+#    cache.open(None)
+#    cache.upgrade()
+#    return str(cache.get_changes().__len__())
 
 # Temperature method depending on system distro
 def get_temp():
@@ -202,7 +213,7 @@ def get_memory_usage():
     return str(psutil.virtual_memory().percent)
 
 def get_load(arg):
-    return round(psutil.getloadavg()[arg] / psutil.cpu_count() * 100, 1)
+    return round(psutil.getloadavg()[arg], 2)
 
 def get_net_data_tx(interface = True):
     global old_net_data_tx
@@ -215,7 +226,7 @@ def get_net_data_tx(interface = True):
     current_time = time.time()
     if current_time == previous_time_tx:
         current_time += 1
-    net_data = (current_net_data - old_net_data_tx) * 8 / (current_time - previous_time_tx) / 1024
+    net_data = (current_net_data - old_net_data_tx) / (current_time - previous_time_tx) / 1024
     previous_time_tx = current_time
     old_net_data_tx = current_net_data
     return f"{net_data:.2f}"
@@ -231,7 +242,7 @@ def get_net_data_rx(interface = True):
     current_time = time.time()
     if current_time == previous_time_rx:
         current_time += 1
-    net_data = (current_net_data - old_net_data_rx) * 8 / (current_time - previous_time_rx) / 1024
+    net_data = (current_net_data - old_net_data_rx) / (current_time - previous_time_rx) / 1024
     previous_time_rx = current_time
     old_net_data_rx = current_net_data
     return f"{net_data:.2f}"
@@ -354,6 +365,63 @@ def zpool_base(pool) -> dict:
         'function': lambda: get_zpool_use(f'{pool}')
         }
 
+##### ADDED Sensors ####
+## Get More Storage Information ##
+def get_disk_available(path):
+    disk_available = str(round((psutil.disk_usage(path).free / 1048576), 2))
+    return disk_available
+
+def get_disk_used(path):
+    disk_used = str(round((psutil.disk_usage(path).used / 1048576), 2))
+    return disk_used
+
+def get_disk_free(path):
+    disk_free = str(100 - psutil.disk_usage(path).percent)
+    return disk_free
+
+## Get More Memory Information ##
+def get_memory_available():
+    memory_available = str(round((psutil.virtual_memory().free / 1048576), 2))
+    return memory_available
+
+def get_memory_used():
+    memory_used = str(round(((psutil.virtual_memory().used + psutil.virtual_memory().buffers + psutil.virtual_memory().cached) / 1048576), 2))
+    return memory_used
+
+def get_memory_free():
+    return str(round((psutil.virtual_memory().free * 100 / psutil.virtual_memory().total), 2))
+
+## Get More Network Information ##
+def get_bytes_sent():
+    bytes_sent = str(round((psutil.net_io_counters().bytes_sent / 1048576), 2))
+    return bytes_sent
+
+def get_bytes_recv():
+    bytes_recv = str(round((psutil.net_io_counters().bytes_recv / 1048576), 2))
+    return bytes_recv
+
+def get_packets_sent():
+    return str(psutil.net_io_counters().packets_sent)
+
+def get_packets_recv():
+    return str(psutil.net_io_counters().packets_recv)
+
+## Get More System Information ##
+def get_host_kernel():
+    kernel = subprocess.check_output(['uname','-rs']).decode('utf-8').rstrip()
+    return kernel
+
+def get_host_platform():
+    platform = subprocess.check_output(
+                                [
+                                    'bash',
+                                    '-c',
+                                    'cat /proc/cpuinfo | grep \'Model\' | head -1 | awk -F: \'{print $NF}\'',
+                                ]
+                            ).decode('utf-8').strip()
+    return platform
+
+
 sensors = {
           'temperature':
                 {'name':'Temperature',
@@ -363,7 +431,7 @@ sensors = {
                  'icon': 'thermometer',
                  'sensor_type': 'sensor',
                  'function': get_temp},
-            'fan_speed':
+          'fan_speed':
                 {'name': 'Fan Speed',
                  'state_class': 'measurement',
                  'unit': 'rpm',
@@ -386,17 +454,18 @@ sensors = {
                 {'name':'Clock Speed',
                  'state_class':'measurement',
                  'unit': 'MHz',
+                 'icon': 'speedometer',
                  'sensor_type': 'sensor',
                  'function': get_clock_speed},
           'disk_use':
-                {'name':'Disk Use',
+                {'name':'Disk Usage',
                  'state_class':'measurement',
                  'unit': '%',
-                 'icon': 'micro-sd',
+                 'icon': 'harddisk',
                  'sensor_type': 'sensor',
                  'function': lambda: get_disk_usage('/')},
           'memory_use':
-                {'name':'Memory Use',
+                {'name':'Memory Usage',
                  'state_class':'measurement',
                  'unit': '%',
                  'icon': 'memory',
@@ -411,37 +480,34 @@ sensors = {
                  'function': get_cpu_usage},
           'load_1m':
                 {'name': 'Load 1m',
-                 'unit': '%',
                  'state_class':'measurement',
                  'icon': 'cpu-64-bit',
                  'sensor_type': 'sensor',
                  'function': lambda: get_load(0)},
           'load_5m':
                 {'name': 'Load 5m',
-                 'unit': '%',
                  'state_class':'measurement',
                  'icon': 'cpu-64-bit',
                  'sensor_type': 'sensor',
                  'function': lambda: get_load(1)},
           'load_15m':
                 {'name': 'Load 15m',
-                 'unit': '%',
                  'state_class':'measurement',
                  'icon': 'cpu-64-bit',
                  'sensor_type': 'sensor',
                  'function': lambda: get_load(2)},
           'net_tx':
-                {'name': 'Network Upload',
+                {'name': 'Network Throughput Out',
                  'state_class':'measurement',
-                 'unit': 'Kbps',
-                 'icon': 'server-network',
+                 'unit': 'KiB/s',
+                 'icon': 'transmission-tower',
                  'sensor_type': 'sensor',
                  'function': get_net_data_tx},
           'net_rx':
-                {'name': 'Network Download',
+                {'name': 'Network Throughput In',
                  'state_class':'measurement',
-                 'unit': 'Kbps',
-                 'icon': 'server-network',
+                 'unit': 'KiB/s',
+                 'icon': 'transmission-tower',
                  'sensor_type': 'sensor',
                  'function': get_net_data_rx},
           'swap_usage':
@@ -469,7 +535,7 @@ sensors = {
                  'function': get_hostname},
           'host_ip':
                 {'name': 'Host IP',
-                 'icon': 'lan',
+                 'icon': 'ip-network',
                  'sensor_type': 'sensor',
                  'function': get_host_ip},
           'host_os':
@@ -490,7 +556,8 @@ sensors = {
                  'function': get_last_message},
           'updates':
                 {'name':'Updates',
-                 'icon': 'cellphone-arrow-down',
+                 'unit': 'pending update(s)',
+                 'icon': 'package-up',
                  'sensor_type': 'sensor',
                  'function': get_updates},
           'wifi_strength':
@@ -506,5 +573,85 @@ sensors = {
                  'icon': 'wifi',
                  'sensor_type': 'sensor',
                  'function': get_wifi_ssid},
-          }
 
+##### ADDED Sensors ####
+          'disk_available':
+                {'name':'Disk Available',
+                 'state_class':'measurement',
+                 'unit': 'mb',
+                 'icon': 'harddisk',
+                 'sensor_type': 'sensor',
+                 'function': lambda: get_disk_available('/')},
+          'disk_used':
+                {'name':'Disk Used',
+                 'state_class':'measurement',
+                 'unit': 'mb',
+                 'icon': 'harddisk',
+                 'sensor_type': 'sensor',
+                 'function': lambda: get_disk_used('/')},
+          'disk_free':
+                {'name':'Disk Free',
+                 'state_class':'measurement',
+                 'unit': '%',
+                 'icon': 'harddisk',
+                 'sensor_type': 'sensor',
+                 'function': lambda: get_disk_free('/')},
+          'memory_available':
+                {'name':'Memory Available',
+                 'state_class':'measurement',
+                 'unit': 'mb',
+                 'icon': 'memory',
+                 'sensor_type': 'sensor',
+                 'function': get_memory_available},
+          'memory_used':
+                {'name':'Memory Used',
+                 'state_class':'measurement',
+                 'unit': 'mb',
+                 'icon': 'memory',
+                 'sensor_type': 'sensor',
+                 'function': get_memory_used},
+          'memory_free':
+                {'name':'Memory Free',
+                 'state_class':'measurement',
+                 'unit': '%',
+                 'icon': 'memory',
+                 'sensor_type': 'sensor',
+                 'function': get_memory_free},
+          'bytes_sent':
+                {'name':'Bytes Sent',
+                 'state_class':'measurement',
+                 'unit': 'mb',
+                 'icon': 'server-network',
+                 'sensor_type': 'sensor',
+                 'function': get_bytes_sent},
+          'bytes_recv':
+                {'name':'Bytes Received',
+                 'state_class':'measurement',
+                 'unit': 'mb',
+                 'icon': 'server-network',
+                 'sensor_type': 'sensor',
+                 'function': get_bytes_recv},
+          'packets_sent':
+                {'name':'Packets Sent',
+                 'state_class':'measurement',
+                 'icon': 'server-network',
+                 'sensor_type': 'sensor',
+                 'function': get_packets_sent},
+          'packets_recv':
+                {'name':'Packets Received',
+                 'state_class':'measurement',
+                 'icon': 'server-network',
+                 'sensor_type': 'sensor',
+                 'function': get_packets_recv},
+          'host_kernel':
+                {'name': 'Host Kernel',
+                 'icon': 'chip',
+                 'sensor_type': 'sensor',
+                 'function': get_host_kernel},
+          'host_platform':
+                {'name': 'Host Platform',
+                 'icon': 'chip',
+                 'sensor_type': 'sensor',
+                 'function': get_host_platform},
+        
+          }
