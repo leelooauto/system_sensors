@@ -525,7 +525,7 @@ sensors = {
           'last_boot':
                 {'name': 'Last Boot',
                  'class': 'timestamp',
-                 'icon': 'clock',
+                 'icon': 'clock-start',
                  'sensor_type': 'sensor',
                  'function': get_last_boot},
           'hostname':
