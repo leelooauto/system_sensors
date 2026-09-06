@@ -151,9 +151,13 @@ docker compose up -d
 ```
 4. Then stop the container to configure
 ```
-docker compose up -d
+docker compose down
 ```
 5. Edit the config.yaml to reflect your system settings in the newly created /config folder, see table above for config options
+6. Start the container
+```
+docker compose up -d
+```
 
 
 [commits-shield]: https://img.shields.io/github/commit-activity/y/leelooauto/system_sensors?style=for-the-badge
